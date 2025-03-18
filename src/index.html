@@ -3,20 +3,32 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Trampoline Physics Game</title>
-  <link rel="stylesheet" href="./style.css">
+  <title>Bounce Trick - Trampoline Game</title>
+  <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-  <div id="game-container">
-    <canvas id="game-canvas"></canvas>
-    <div id="ui-layer">
-      <div id="score-display">0</div>
-      <div id="control-hints">
-        <div id="joystick-container"></div>
-        <div id="shape-container"></div>
-      </div>
-    </div>
+  <!-- Game UI elements will be created dynamically by JavaScript -->
+  
+  <!-- Instructions overlay -->
+  <div id="instructions">
+    <h2>Bounce Trick</h2>
+    <p>Perform amazing tricks on the trampoline!</p>
+    
+    <h3>Controls:</h3>
+    <p><strong>Left joystick:</strong> Control rotation in the air</p>
+    <p><strong>Right buttons:</strong> Change body shape</p>
+    <p><strong>Keyboard:</strong> Left/Right arrows to rotate, 1-4 to change shapes</p>
+    <p><strong>Press D:</strong> Toggle debug info</p>
+    <p><strong>Press R:</strong> Reset character if stuck</p>
+    
+    <h3>Tips:</h3>
+    <p>Land feet first for maximum bounce height</p>
+    <p>Try different shape combinations for higher scores</p>
+    <p>Chain different tricks for combo multipliers</p>
+    
+    <button id="start-game">Start Game</button>
   </div>
+  
   <script type="module" src="./index.ts"></script>
 </body>
 </html>
