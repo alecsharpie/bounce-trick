@@ -118,8 +118,15 @@ export class Character {
     this.rightLeg.position.set(-0.2, 0.5, 0);
     this.body.add(this.rightLeg);
 
-    // Default pose - straight
-    this.applyShape('straight');
+    // Apply default shape from shape system
+    const defaultShape = this.shapeSystem.generateDefaultShape();
+    this.shapeSystem.applyLimbPositions(
+      this.leftArm,
+      this.rightArm,
+      this.leftLeg,
+      this.rightLeg,
+      defaultShape
+    );
   }
 
   private createLimb(
@@ -192,17 +199,13 @@ export class Character {
     // Process custom shape if drawn path is provided
     if (drawnPath && drawnPath.length > 3) {
       this.applyCustomShape(drawnPath);
-    } 
-    // Apply predefined shape if no custom shape is active
-    else if (shapeInput && shapeInput !== this.currentShape && !this.isUsingCustomShape) {
-      this.applyShape(shapeInput);
     }
 
     // Update group position and rotation
     this.group.position.copy(this.position);
     this.group.rotation.copy(this.rotation);
   }
-  
+
   /**
    * Apply a custom shape based on a drawn path
    * @param drawnPath Array of points from user drawing
@@ -210,12 +213,12 @@ export class Character {
   public applyCustomShape(drawnPath: Point[]): void {
     // Process the drawn shape using ShapeSystem
     const limbPositions = this.shapeSystem.processDrawnShape(drawnPath);
-    
+
     if (limbPositions) {
       // Store the custom limb positions
       this.customLimbPositions = limbPositions;
       this.isUsingCustomShape = true;
-      
+
       // Apply limb positions to character
       this.shapeSystem.applyLimbPositions(
         this.leftArm,
@@ -224,62 +227,31 @@ export class Character {
         this.rightLeg,
         limbPositions
       );
-      
+
       // Set current shape to "custom"
       this.currentShape = 'custom';
     }
   }
-  
+
   /**
-   * Reset to a predefined shape
+   * Reset to a default shape
    */
   public resetToDefaultShape(): void {
     this.isUsingCustomShape = false;
     this.customLimbPositions = null;
     this.shapeSystem.clearDrawnPath();
-    this.applyShape('straight');
-  }
 
-  private applyShape(shape: string): void {
-    this.currentShape = shape;
+    // Apply default shape from shape system
+    const defaultShape = this.shapeSystem.generateDefaultShape();
+    this.shapeSystem.applyLimbPositions(
+      this.leftArm,
+      this.rightArm,
+      this.leftLeg,
+      this.rightLeg,
+      defaultShape
+    );
 
-    // Reset limbs
-    this.leftArm.rotation.set(0, 0, 0);
-    this.rightArm.rotation.set(0, 0, 0);
-    this.leftLeg.rotation.set(0, 0, 0);
-    this.rightLeg.rotation.set(0, 0, 0);
-
-    switch (shape) {
-      case 'straight':
-        // Default pose - arms down, legs straight
-        this.leftArm.rotation.z = -Math.PI / 8;
-        this.rightArm.rotation.z = Math.PI / 8;
-        break;
-
-      case 'tuck':
-        // Tuck position - arms forward, knees up
-        this.leftArm.rotation.z = -Math.PI / 2;
-        this.rightArm.rotation.z = Math.PI / 2;
-        this.leftLeg.rotation.x = Math.PI / 2;
-        this.rightLeg.rotation.x = Math.PI / 2;
-        break;
-
-      case 'pike':
-        // Pike position - touch toes
-        this.leftArm.rotation.x = -Math.PI / 2;
-        this.rightArm.rotation.x = -Math.PI / 2;
-        this.leftLeg.rotation.x = -Math.PI / 6;
-        this.rightLeg.rotation.x = -Math.PI / 6;
-        break;
-
-      case 'straddle':
-        // Straddle position - legs apart
-        this.leftArm.rotation.z = -Math.PI / 2;
-        this.rightArm.rotation.z = Math.PI / 2;
-        this.leftLeg.rotation.z = -Math.PI / 3;
-        this.rightLeg.rotation.z = Math.PI / 3;
-        break;
-    }
+    this.currentShape = 'straight';
   }
 
   private detectTrick(): void {
@@ -308,7 +280,7 @@ export class Character {
           trickType = 'straddle flip';
           difficultyMultiplier = 1.8;
           break;
-          
+
         case 'custom':
           trickType = 'custom flip';
           difficultyMultiplier = 2.0; // Custom shapes are more difficult
@@ -364,5 +336,19 @@ export class Character {
 
   public getRotationSpeed(): number {
     return this.rotationSpeed;
+  }
+
+  /**
+   * Show the torso visual guide for drawing
+   */
+  public showTorsoVisual(): void {
+    this.shapeSystem.showTorsoVisual();
+  }
+
+  /**
+   * Hide the torso visual guide
+   */
+  public hideTorsoVisual(): void {
+    this.shapeSystem.hideTorsoVisual();
   }
 }

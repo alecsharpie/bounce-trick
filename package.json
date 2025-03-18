@@ -7,8 +7,8 @@
     "build": "tsc && vite build",
     "build:gh-pages": "tsc && vite build",
     "preview": "vite preview",
-    "lint": "eslint . --ext .ts",
-    "lint:fix": "eslint . --ext .ts --fix",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "format": "prettier --write \"src/**/*.ts\"",
     "test": "jest",
     "test:watch": "jest --watch"

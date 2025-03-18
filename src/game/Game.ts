@@ -130,12 +130,15 @@ export class Game {
 
     // Check if we have a custom drawn path
     let drawnPath;
-    if (!this.inputManager.isInDrawingMode() && this.inputManager.getDrawnPath().length > 0) {
+    if (
+      !this.inputManager.isInDrawingMode() &&
+      this.inputManager.getDrawnPath().length > 0
+    ) {
       drawnPath = this.inputManager.getDrawnPath();
       // Clear the drawn path after using it
       this.inputManager.clearDrawnPath();
     }
-    
+
     // Update character based on physics and input
     this.character.update(
       deltaTime,
@@ -143,6 +146,19 @@ export class Game {
       this.inputManager.getShapeInput(),
       drawnPath
     );
+
+    // Show/hide torso visual guide based on drawing mode
+    if (this.inputManager.isInDrawingMode()) {
+      // Access the character's shape system to show the torso visual
+      if (this.character instanceof Character) {
+        this.character.showTorsoVisual();
+      }
+    } else {
+      // Hide the torso visual when not in drawing mode
+      if (this.character instanceof Character) {
+        this.character.hideTorsoVisual();
+      }
+    }
 
     // Update trampoline
     this.trampoline.update(deltaTime);
@@ -221,7 +237,7 @@ export class Game {
     // Reset the game state
     this.scoreManager.resetScore();
     this.resetCharacterPosition();
-    
+
     // Clear any custom shapes
     this.inputManager.clearDrawnPath();
     this.character.resetToDefaultShape();
