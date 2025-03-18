@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { ShapeSystem, LimbPositions, Point } from '../rendering/ShapeSystem';
 
 // Define trick types
 export interface Trick {
@@ -18,6 +19,11 @@ export class Character {
   private rightArm!: THREE.Group;
   private leftLeg!: THREE.Group;
   private rightLeg!: THREE.Group;
+
+  // Shape system for freeform control
+  private shapeSystem: ShapeSystem;
+  private customLimbPositions: LimbPositions | null = null;
+  private isUsingCustomShape: boolean = false;
 
   // Physics properties
   private position: THREE.Vector3;
@@ -47,6 +53,9 @@ export class Character {
     this.rotationTotal = 0;
     this.isInAir = true;
     this.currentTrick = null;
+
+    // Initialize shape system
+    this.shapeSystem = new ShapeSystem(scene);
 
     // Body group
     this.body = new THREE.Group();
@@ -138,7 +147,8 @@ export class Character {
   public update(
     deltaTime: number,
     rotationInput: THREE.Vector2,
-    shapeInput: string
+    shapeInput: string,
+    drawnPath?: Point[] // Optional drawnPath for custom shapes
   ): void {
     // Apply gravity
     this.velocity.y -= 9.8 * deltaTime;
@@ -179,14 +189,55 @@ export class Character {
       this.rotationTotal = 0;
     }
 
-    // Apply shape if provided
-    if (shapeInput && shapeInput !== this.currentShape) {
+    // Process custom shape if drawn path is provided
+    if (drawnPath && drawnPath.length > 3) {
+      this.applyCustomShape(drawnPath);
+    } 
+    // Apply predefined shape if no custom shape is active
+    else if (shapeInput && shapeInput !== this.currentShape && !this.isUsingCustomShape) {
       this.applyShape(shapeInput);
     }
 
     // Update group position and rotation
     this.group.position.copy(this.position);
     this.group.rotation.copy(this.rotation);
+  }
+  
+  /**
+   * Apply a custom shape based on a drawn path
+   * @param drawnPath Array of points from user drawing
+   */
+  public applyCustomShape(drawnPath: Point[]): void {
+    // Process the drawn shape using ShapeSystem
+    const limbPositions = this.shapeSystem.processDrawnShape(drawnPath);
+    
+    if (limbPositions) {
+      // Store the custom limb positions
+      this.customLimbPositions = limbPositions;
+      this.isUsingCustomShape = true;
+      
+      // Apply limb positions to character
+      this.shapeSystem.applyLimbPositions(
+        this.leftArm,
+        this.rightArm,
+        this.leftLeg,
+        this.rightLeg,
+        limbPositions
+      );
+      
+      // Set current shape to "custom"
+      this.currentShape = 'custom';
+    }
+  }
+  
+  /**
+   * Reset to a predefined shape
+   */
+  public resetToDefaultShape(): void {
+    this.isUsingCustomShape = false;
+    this.customLimbPositions = null;
+    this.shapeSystem.clearDrawnPath();
+    this.applyShape('straight');
   }
 
   private applyShape(shape: string): void {
@@ -257,6 +308,11 @@ export class Character {
           trickType = 'straddle flip';
           difficultyMultiplier = 1.8;
           break;
+          
+        case 'custom':
+          trickType = 'custom flip';
+          difficultyMultiplier = 2.0; // Custom shapes are more difficult
+          break;
       }
 
       // Set current trick
@@ -275,7 +331,7 @@ export class Character {
         type: 'half flip',
         rotation: 180,
         shape: this.currentShape,
-        difficultyMultiplier: 0.5,
+        difficultyMultiplier: this.currentShape === 'custom' ? 1.0 : 0.5,
       };
     }
   }

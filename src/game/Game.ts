@@ -128,11 +128,20 @@ export class Game {
     // Update physics
     this.physics.update(deltaTime);
 
+    // Check if we have a custom drawn path
+    let drawnPath;
+    if (!this.inputManager.isInDrawingMode() && this.inputManager.getDrawnPath().length > 0) {
+      drawnPath = this.inputManager.getDrawnPath();
+      // Clear the drawn path after using it
+      this.inputManager.clearDrawnPath();
+    }
+    
     // Update character based on physics and input
     this.character.update(
       deltaTime,
       this.inputManager.getRotationInput(),
-      this.inputManager.getShapeInput()
+      this.inputManager.getShapeInput(),
+      drawnPath
     );
 
     // Update trampoline
@@ -183,12 +192,16 @@ export class Game {
 
     const charPos = this.character.getPosition();
     const charVel = this.character.getVelocity();
+    const isDrawingMode = this.inputManager.isInDrawingMode();
+    const drawnPathLength = this.inputManager.getDrawnPath().length;
 
     let debugInfo = `
       Character Position: ${charPos.x.toFixed(2)}, ${charPos.y.toFixed(2)}, ${charPos.z.toFixed(2)}<br>
       Character Velocity: ${charVel.x.toFixed(2)}, ${charVel.y.toFixed(2)}, ${charVel.z.toFixed(2)}<br>
       Rotation Speed: ${this.character.getRotationSpeed().toFixed(2)}<br>
       Current Shape: ${this.inputManager.getShapeInput()}<br>
+      Drawing Mode: ${isDrawingMode ? 'Active' : 'Inactive'}<br>
+      Drawn Path Points: ${drawnPathLength}<br>
       FPS: ${((1 / (performance.now() - this.lastTime)) * 1000).toFixed(1)}<br>
       <br>
       Last Trick: ${this.lastTrick ? this.lastTrick.type : 'None'}<br>
@@ -208,6 +221,10 @@ export class Game {
     // Reset the game state
     this.scoreManager.resetScore();
     this.resetCharacterPosition();
+    
+    // Clear any custom shapes
+    this.inputManager.clearDrawnPath();
+    this.character.resetToDefaultShape();
 
     // Start the game again
     if (!this.isRunning) {
