@@ -56,10 +56,10 @@ jobs:
             echo "Searching for possible build output directories:"
             find . -type d -name "dist" -o -name "build" -o -name "out"
           fi
-        
-          - name: Deploy to GitHub Pages
-          uses: JamesIves/github-pages-deploy-action@v4
-          with:
-            branch: gh-pages
-            folder: dist
-            token: ${{ secrets.GITHUB_TOKEN }} 
+      
+      - name: Deploy to GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          branch: gh-pages
+          folder: dist
+          token: ${{ secrets.GITHUB_TOKEN }} 
