@@ -14,6 +14,5 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: true,
   },
-  // Specify the entry point
-  root: 'src',
+  // Remove the root: 'src' line or change it to root: '.'
 });
