@@ -4,7 +4,7 @@ A physics-based web game where players control a ragdoll character bouncing on a
 
 ## Play the Game
 
-You can play the game online at: https://yourusername.github.io/bounce-trick/
+You can play the game online at: https://alecsharpie.github.io/bounce-trick/
 
 ## Features
 
