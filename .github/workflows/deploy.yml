@@ -48,7 +48,7 @@ jobs:
             echo "dist directory exists"
             ls -lah dist
           else
-            echo "src/dist directory does not exist"
+            echo "dist directory does not exist"
             echo "Searching for possible build output directories:"
             find . -type d -name "dist" -o -name "build" -o -name "out"
           fi
@@ -56,4 +56,4 @@ jobs:
       - name: Deploy 🚀
         uses: JamesIves/github-pages-deploy-action@v4
         with:
-          folder: src/dist
+          folder: dist
