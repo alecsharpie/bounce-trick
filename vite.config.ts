@@ -13,5 +13,7 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: true,
-  }
+  },
+  // Specify the entry point
+  root: 'src',
 });
