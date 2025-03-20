@@ -14,5 +14,6 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: true,
   },
+  base: '/bounce-trick/',
   // Remove the root: 'src' line or change it to root: '.'
 });

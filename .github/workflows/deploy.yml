@@ -34,6 +34,9 @@ jobs:
           echo "Checking for Vite config:"
           find . -name "vite.config.*"
           
+      - name: Create .nojekyll file
+        run: touch dist/.nojekyll
+        
       - name: Build with Debug
         run: |
           echo "Running TypeScript compilation..."
@@ -45,6 +48,8 @@ jobs:
           npm run build:gh-pages
           echo "Build completed, checking output directory:"
           ls -lah
+          
+          touch dist/.nojekyll
           
       - name: Check for dist directory
         run: |
