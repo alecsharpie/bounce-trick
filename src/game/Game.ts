@@ -12,7 +12,8 @@ export class Game {
   private physics: Physics;
   private inputManager: InputManager;
   private scoreManager: ScoreManager;
-  private character: Character;
+  // Make character public so InputManager can access it
+  public character: Character;
   private trampoline: Trampoline;
   // Provides background visuals
   private readonly environment: Environment;
@@ -33,6 +34,11 @@ export class Game {
 
     // Add CSS animations
     this.addCssAnimations();
+    
+    // Store the game instance in window so the InputManager can access it
+    // This is a bit hacky but allows direct communication
+    (window as any).__gameInstance = this;
+    console.log("Game instance stored in window.__gameInstance");
   }
 
   public start(): void {
@@ -128,15 +134,11 @@ export class Game {
     // Update physics
     this.physics.update(deltaTime);
 
-    // Check if we have a drawn path
-    let drawnPath = this.inputManager.getDrawnPath();
-    if (drawnPath.length > 3) {
-      // Process the drawn path
-      this.character.applyCustomShape(drawnPath);
-      
-      // Clear the drawn path after using it
-      this.inputManager.clearDrawnPath();
-    }
+    // We don't check for a drawn path here anymore
+    // The path is now only applied when the user finishes drawing (handled in InputManager)
+    
+    // Make sure the torso visual guide is always displayed
+    this.character.showTorsoVisual();
 
     // Update character based on physics and input
     this.character.update(
@@ -236,5 +238,41 @@ export class Game {
     if (!this.isRunning) {
       this.start();
     }
+  }
+  
+  /**
+   * Show visual feedback when a shape is successfully applied
+   */
+  private showShapeAppliedFeedback(): void {
+    // Create a feedback element if it doesn't exist
+    let feedback = document.getElementById('shape-feedback');
+    if (!feedback) {
+      feedback = document.createElement('div');
+      feedback.id = 'shape-feedback';
+      feedback.style.position = 'absolute';
+      feedback.style.top = '40%';
+      feedback.style.left = '50%';
+      feedback.style.transform = 'translate(-50%, -50%)';
+      feedback.style.fontSize = '28px';
+      feedback.style.fontWeight = 'bold';
+      feedback.style.color = 'rgba(50, 255, 100, 0.9)';
+      feedback.style.textShadow = '0 0 10px rgba(0, 0, 0, 0.7)';
+      feedback.style.pointerEvents = 'none';
+      feedback.style.zIndex = '20';
+      feedback.style.opacity = '0';
+      feedback.style.transition = 'opacity 0.2s ease-in-out';
+      document.body.appendChild(feedback);
+    }
+    
+    // Update text and show the feedback
+    feedback.textContent = 'Shape Applied!';
+    feedback.style.opacity = '1';
+    
+    // Hide after a short delay
+    setTimeout(() => {
+      if (feedback) {
+        feedback.style.opacity = '0';
+      }
+    }, 1200);
   }
 }

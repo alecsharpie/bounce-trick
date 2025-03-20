@@ -87,29 +87,124 @@ export class ShapeSystem {
    * @returns LimbPositions object or null if path is invalid
    */
   public processDrawnShape(drawnPath: Point[]): LimbPositions | null {
-    // Simplify the drawn path using Ramer-Douglas-Peucker algorithm
-    // Use a smaller tolerance for more detail
-    const simplifiedPath = this.simplifyPath(drawnPath, 0.05);
-
-    // Make sure we have enough points
-    if (simplifiedPath.length < 3) {
-      return null; // Path too short
+    console.log("Processing drawn path of length:", drawnPath.length);
+    
+    // Basic validation
+    if (drawnPath.length < 3) {
+      console.log("Path too short");
+      return null;
     }
-
-    // Create path for left side (original drawn path)
-    const leftPath = simplifiedPath;
-
+    
+    // Apply simple smoothing to reduce jitter
+    const smoothedPath = this.smoothPath(drawnPath);
+    
+    // Split the path into two halves - top half for arms, bottom half for legs
+    const armPath: Point[] = [];
+    const legPath: Point[] = [];
+    
+    // First, add the anchor points (shoulder and hip)
+    armPath.push({...this.shoulderPosition});
+    legPath.push({...this.hipPosition});
+    
+    // Find the center point of the drawing (vertically)
+    let minY = Number.MAX_VALUE;
+    let maxY = Number.MIN_VALUE;
+    
+    for (const point of smoothedPath) {
+      minY = Math.min(minY, point.y);
+      maxY = Math.max(maxY, point.y);
+    }
+    
+    const midY = (minY + maxY) / 2;
+    console.log(`Drawing vertical range: ${minY} to ${maxY}, mid: ${midY}`);
+    
+    // Add all points to either arm or leg path based on Y position
+    for (const point of smoothedPath) {
+      if (point.y >= midY) {
+        // Above midpoint - add to arm path
+        armPath.push(point);
+      } else {
+        // Below midpoint - add to leg path
+        legPath.push(point);
+      }
+    }
+    
+    console.log(`Split into ${armPath.length} arm points and ${legPath.length} leg points`);
+    
+    // Make sure both paths have enough points
+    if (armPath.length < 2) {
+      console.log("Arm path too short, using default");
+      // Add some default points for arm
+      armPath.push(
+        {x: this.shoulderPosition.x + 0.2, y: this.shoulderPosition.y + 0.3},
+        {x: this.shoulderPosition.x + 0.4, y: this.shoulderPosition.y + 0.2}
+      );
+    }
+    
+    if (legPath.length < 2) {
+      console.log("Leg path too short, using default");
+      // Add some default points for leg
+      legPath.push(
+        {x: this.hipPosition.x + 0.1, y: this.hipPosition.y - 0.5},
+        {x: this.hipPosition.x + 0.2, y: this.hipPosition.y - 1.0}
+      );
+    }
+    
+    // Combine paths into one complete left-side path
+    const leftPath = [...armPath, ...legPath];
+    
     // Create mirrored path for right side
-    const rightPath = leftPath.map((p) => ({ x: -p.x, y: p.y }));
-
-    // Visualize the path and its mirror
+    const rightPath = leftPath.map(p => ({x: -p.x, y: p.y}));
+    
+    // Visualize the paths
     this.visualizePath(leftPath, rightPath);
-
-    // Return the limb positions
+    
     return {
       leftArmLegPath: leftPath,
-      rightArmLegPath: rightPath,
+      rightArmLegPath: rightPath
     };
+  }
+  
+  /**
+   * Apply smoothing to a path to reduce jitter and noise
+   * Uses a simple moving average filter
+   */
+  private smoothPath(path: Point[]): Point[] {
+    if (path.length < 4) return path;
+    
+    const result: Point[] = [];
+    const windowSize = 3; // Size of smoothing window
+    
+    // Add first point unchanged
+    result.push(path[0]);
+    
+    // Smooth middle points
+    for (let i = 0; i < path.length; i++) {
+      // Determine window boundaries
+      const windowStart = Math.max(0, i - Math.floor(windowSize / 2));
+      const windowEnd = Math.min(path.length - 1, i + Math.floor(windowSize / 2));
+      let count = 0;
+      let sumX = 0;
+      let sumY = 0;
+      
+      // Calculate average within window
+      for (let j = windowStart; j <= windowEnd; j++) {
+        sumX += path[j].x;
+        sumY += path[j].y;
+        count++;
+      }
+      
+      // Add smoothed point
+      result.push({
+        x: sumX / count,
+        y: sumY / count
+      });
+    }
+    
+    // Ensure last point is present
+    result.push(path[path.length - 1]);
+    
+    return result;
   }
 
   /**
@@ -179,19 +274,62 @@ export class ShapeSystem {
     // Clear previous visualization
     this.clearDrawnPath();
 
-    // Create geometry for the left path
-    const leftPoints = leftPath.map((p) => new THREE.Vector3(p.x, p.y, 0.1));
+    // Create geometry for the left path with thicker, more visible line
+    const leftPoints = leftPath.map((p) => new THREE.Vector3(p.x, p.y, 0.15));
     const leftGeometry = new THREE.BufferGeometry().setFromPoints(leftPoints);
-    const leftMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00 });
+    const leftMaterial = new THREE.LineBasicMaterial({ 
+      color: 0x22ff44,
+      linewidth: 3,
+      transparent: true,
+      opacity: 0.7
+    });
     this.pathLine = new THREE.Line(leftGeometry, leftMaterial);
     this.scene.add(this.pathLine);
 
     // Create geometry for the right path
-    const rightPoints = rightPath.map((p) => new THREE.Vector3(p.x, p.y, 0.1));
+    const rightPoints = rightPath.map((p) => new THREE.Vector3(p.x, p.y, 0.15));
     const rightGeometry = new THREE.BufferGeometry().setFromPoints(rightPoints);
-    const rightMaterial = new THREE.LineBasicMaterial({ color: 0x0000ff });
+    const rightMaterial = new THREE.LineBasicMaterial({ 
+      color: 0x4488ff,
+      linewidth: 3,
+      transparent: true,
+      opacity: 0.7
+    });
     this.mirroredPathLine = new THREE.Line(rightGeometry, rightMaterial);
     this.scene.add(this.mirroredPathLine);
+    
+    // Add small spheres at control points for better visualization
+    this.addControlPointSpheres(leftPath, 0x22ff44);
+    this.addControlPointSpheres(rightPath, 0x4488ff);
+  }
+  
+  /**
+   * Add small spheres at key control points for better visualization
+   */
+  private addControlPointSpheres(path: Point[], color: number): void {
+    // Only add spheres at start, end, and a couple key points
+    const keyPoints = [
+      0,  // Start point
+      Math.floor(path.length / 3),  // One third point
+      Math.floor(2 * path.length / 3),  // Two thirds point
+      path.length - 1  // End point
+    ];
+    
+    for (const idx of keyPoints) {
+      if (idx >= 0 && idx < path.length) {
+        const point = path[idx];
+        const sphereGeometry = new THREE.SphereGeometry(0.04, 8, 8);
+        const sphereMaterial = new THREE.MeshBasicMaterial({
+          color: color,
+          transparent: true,
+          opacity: 0.8
+        });
+        
+        const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+        sphere.position.set(point.x, point.y, 0.15);
+        this.limbLines.add(sphere);
+      }
+    }
   }
 
   /**
@@ -399,7 +537,7 @@ export class ShapeSystem {
   }
 
   /**
-   * Apply the drawn body shape to the character's limbs
+   * Apply the drawn body shape to create noodle-like limbs
    */
   public applyLimbPositions(
     leftArm: THREE.Group,
@@ -410,18 +548,35 @@ export class ShapeSystem {
   ): void {
     const leftPath = limbPositions.leftArmLegPath;
     const rightPath = limbPositions.rightArmLegPath;
+    
+    console.log("Applying limb positions");
 
-    // Clear existing limbs
-    this.clearLimbs(leftArm);
-    this.clearLimbs(rightArm);
-    this.clearLimbs(leftLeg);
-    this.clearLimbs(rightLeg);
-
-    // Create new segmented limbs based on the paths
-    this.createSegmentedLimb(leftArm, leftPath, this.shoulderPosition, true);
-    this.createSegmentedLimb(rightArm, rightPath, { x: -this.shoulderPosition.x, y: this.shoulderPosition.y }, true);
-    this.createSegmentedLimb(leftLeg, leftPath, this.hipPosition, false);
-    this.createSegmentedLimb(rightLeg, rightPath, { x: -this.hipPosition.x, y: this.hipPosition.y }, false);
+    // Find the midpoint to split the path into arms and legs
+    const midIndex = Math.floor(leftPath.length / 2);
+    
+    // Split the paths
+    const leftArmPath = leftPath.slice(0, midIndex + 1);
+    const leftLegPath = leftPath.slice(midIndex);
+    
+    const rightArmPath = rightPath.slice(0, midIndex + 1);
+    const rightLegPath = rightPath.slice(midIndex);
+    
+    console.log(`Split paths - Arms: ${leftArmPath.length} points, Legs: ${leftLegPath.length} points`);
+    
+    // Create the limbs directly using the noodle function
+    console.log("Creating left arm noodle");
+    this.createNoodleLimb(leftArm, leftArmPath, 0x3f51b5, true);
+    
+    console.log("Creating right arm noodle");
+    this.createNoodleLimb(rightArm, rightArmPath, 0x3f51b5, true);
+    
+    console.log("Creating left leg noodle");
+    this.createNoodleLimb(leftLeg, leftLegPath, 0x4caf50, false);
+    
+    console.log("Creating right leg noodle");
+    this.createNoodleLimb(rightLeg, rightLegPath, 0x4caf50, false);
+    
+    console.log("Noodle limbs created");
   }
 
   /**
@@ -453,81 +608,335 @@ export class ShapeSystem {
     startPoint: Point,
     isArm: boolean
   ): void {
-    // Number of segments for each limb
-    const NUM_SEGMENTS = 10;
+    console.log(`Creating ${isArm ? 'arm' : 'leg'} with path length: ${path.length}`);
+    
+    // Clear any existing limb parts first
+    this.clearLimbs(limbGroup);
+    
+    // Increased number of segments for smoother limbs
+    const NUM_SEGMENTS = 14;
     
     // Filter points based on whether it's an arm or leg
-    let filteredPath = path.filter(point => {
-      if (isArm) {
-        // For arms, use points in the upper half of the body
-        return point.y >= this.torsoCenter.y - 0.2;
-      } else {
-        // For legs, use points in the lower half of the body
-        return point.y <= this.torsoCenter.y + 0.2;
-      }
-    });
+    let filteredPath = isArm 
+      ? path.slice(0, Math.floor(path.length / 2)) // First half for arms
+      : path.slice(Math.floor(path.length / 2));   // Second half for legs
+    
+    console.log(`Filtered path for ${isArm ? 'arm' : 'leg'}: ${filteredPath.length} points`);
     
     // If no valid points or if the path is too simple (like a straight line),
-    // we need to add more points to make it work
-    if (filteredPath.length < 2 || this.isPathTooSimple(filteredPath)) {
-      // For simple paths, create a more interesting default shape
-      // based on the direction of the line
+    // create a default curved limb
+    if (filteredPath.length < 3 || this.isPathTooSimple(filteredPath)) {
+      console.log(`Creating default ${isArm ? 'arm' : 'leg'} shape`);
+      
+      // Set default positions based on character pose (arms above head)
       let defaultEndPoint: Point;
       
-      if (filteredPath.length >= 2) {
-        // Use the direction of the simple line to determine the end point
-        const direction = {
-          x: filteredPath[filteredPath.length-1].x - filteredPath[0].x,
-          y: filteredPath[filteredPath.length-1].y - filteredPath[0].y
-        };
-        
-        // Normalize and scale
-        const length = Math.sqrt(direction.x * direction.x + direction.y * direction.y);
-        if (length > 0) {
-          direction.x /= length;
-          direction.y /= length;
-        }
-        
-        // Create end point based on direction
-        defaultEndPoint = {
-          x: startPoint.x + direction.x * (isArm ? 1.0 : 1.5),
-          y: startPoint.y + direction.y * (isArm ? 1.0 : 1.5)
-        };
+      if (isArm) {
+        // Arm default - raised above head
+        defaultEndPoint = { x: startPoint.x * 0.25, y: startPoint.y + 0.7 };
       } else {
-        // Default end point if we don't have enough points
-        defaultEndPoint = isArm 
-          ? { x: startPoint.x * 1.5, y: startPoint.y - 1 }
-          : { x: startPoint.x * 1.5, y: startPoint.y - 1.5 };
+        // Leg default - straight down
+        defaultEndPoint = { x: startPoint.x, y: startPoint.y - 1.2 };
       }
       
-      // Create a path with a slight curve to make it more interesting
-      const midPoint = {
-        x: (startPoint.x + defaultEndPoint.x) / 2 + (isArm ? 0.2 : -0.2),
-        y: (startPoint.y + defaultEndPoint.y) / 2
+      // Create control points for a natural curve
+      const ctrl1 = {
+        x: startPoint.x + (defaultEndPoint.x - startPoint.x) * 0.3 + (isArm ? 0.1 : 0),
+        y: startPoint.y + (defaultEndPoint.y - startPoint.y) * 0.3
       };
       
-      // Create a curved path with multiple segments
-      const points = this.createCurvedPath(
+      const ctrl2 = {
+        x: startPoint.x + (defaultEndPoint.x - startPoint.x) * 0.7 + (isArm ? 0.05 : 0),
+        y: startPoint.y + (defaultEndPoint.y - startPoint.y) * 0.7
+      };
+      
+      // Create a curved path with multiple segments using cubic Bezier
+      const points = this.createCubicBezierPath(
         startPoint, 
-        midPoint,
+        ctrl1,
+        ctrl2,
         defaultEndPoint, 
         NUM_SEGMENTS
       );
       
-      this.createLimbFromPoints(limbGroup, points, isArm ? 0x3f51b5 : 0x4caf50);
+      this.createNoodleLimb(limbGroup, points, isArm ? 0x3f51b5 : 0x4caf50, isArm);
       return;
     }
     
-    // Add the start point to the beginning if it's not already there
-    if (filteredPath[0].x !== startPoint.x || filteredPath[0].y !== startPoint.y) {
+    // Ensure the path starts at the correct anchor point
+    if (filteredPath.length > 0 && 
+        (Math.abs(filteredPath[0].x - startPoint.x) > 0.01 || 
+         Math.abs(filteredPath[0].y - startPoint.y) > 0.01)) {
+      console.log(`Adding start point to ${isArm ? 'arm' : 'leg'}`);
       filteredPath = [startPoint, ...filteredPath];
+    }
+    
+    // Ensure path doesn't extend too far
+    if (filteredPath.length > 3) {
+      const maxLength = isArm ? 1.5 : 2.0;
+      filteredPath = this.limitPathLength(filteredPath, startPoint, maxLength);
     }
     
     // Resample the path to get equally spaced points
     const resampledPoints = this.resamplePathToEqualSegments(filteredPath, NUM_SEGMENTS);
+    console.log(`Resampled ${isArm ? 'arm' : 'leg'} path: ${resampledPoints.length} points`);
     
-    // Create the limb from these points
-    this.createLimbFromPoints(limbGroup, resampledPoints, isArm ? 0x3f51b5 : 0x4caf50);
+    // Create the limb from these points with thickness variation
+    this.createNoodleLimb(limbGroup, resampledPoints, isArm ? 0x3f51b5 : 0x4caf50, isArm);
+  }
+  
+  /**
+   * Create a cubic Bezier path for more natural curves
+   */
+  private createCubicBezierPath(start: Point, ctrl1: Point, ctrl2: Point, end: Point, numPoints: number): Point[] {
+    const points: Point[] = [];
+    
+    for (let i = 0; i < numPoints; i++) {
+      const t = i / (numPoints - 1);
+      
+      // Cubic Bezier formula
+      const mt = 1 - t;
+      const mt2 = mt * mt;
+      const mt3 = mt2 * mt;
+      const t2 = t * t;
+      const t3 = t2 * t;
+      
+      const x = mt3 * start.x + 3 * mt2 * t * ctrl1.x + 3 * mt * t2 * ctrl2.x + t3 * end.x;
+      const y = mt3 * start.y + 3 * mt2 * t * ctrl1.y + 3 * mt * t2 * ctrl2.y + t3 * end.y;
+      
+      points.push({ x, y });
+    }
+    
+    return points;
+  }
+  
+  /**
+   * Limit the length of a path to prevent overly long limbs
+   */
+  private limitPathLength(path: Point[], startPoint: Point, maxLength: number): Point[] {
+    let accumulatedLength = 0;
+    const result = [path[0]];
+    
+    for (let i = 1; i < path.length; i++) {
+      const prevPoint = path[i - 1];
+      const currentPoint = path[i];
+      
+      const segmentLength = Math.sqrt(
+        Math.pow(currentPoint.x - prevPoint.x, 2) + 
+        Math.pow(currentPoint.y - prevPoint.y, 2)
+      );
+      
+      accumulatedLength += segmentLength;
+      
+      if (accumulatedLength > maxLength) {
+        // Calculate the point exactly at max length
+        const ratio = (maxLength - (accumulatedLength - segmentLength)) / segmentLength;
+        const finalPoint = {
+          x: prevPoint.x + (currentPoint.x - prevPoint.x) * ratio,
+          y: prevPoint.y + (currentPoint.y - prevPoint.y) * ratio
+        };
+        
+        result.push(finalPoint);
+        break;
+      }
+      
+      result.push(currentPoint);
+    }
+    
+    return result;
+  }
+  
+  /**
+   * Create a simple noodle-like limb using connected cylinders
+   * This gives a wiggly, flexible tube appearance
+   */
+  private createNoodleLimb(
+    limbGroup: THREE.Group, 
+    points: Point[], 
+    color: number, 
+    isArm: boolean
+  ): void {
+    // Clear any existing limb parts
+    this.clearLimbs(limbGroup);
+    
+    // If not enough points, create a simple default limb
+    if (points.length < 3) {
+      console.log("Creating default noodle limb");
+      this.createDefaultNoodleLimb(limbGroup, color, isArm);
+      return;
+    }
+    
+    console.log(`Creating noodle ${isArm ? 'arm' : 'leg'} with ${points.length} points`);
+    
+    // Fixed number of segments for consistency
+    const numSegments = 10;
+    
+    // Create equally spaced points along the path
+    const resampledPoints = this.resamplePathToEqualSegments(points, numSegments + 1);
+    
+    // Set thickness for limbs
+    const baseThickness = isArm ? 0.13 : 0.18;
+    
+    // Create cylinders between consecutive points
+    for (let i = 0; i < resampledPoints.length - 1; i++) {
+      const start = resampledPoints[i];
+      const end = resampledPoints[i + 1];
+      
+      // Calculate position along the limb (0 at start, 1 at end)
+      const t = i / (resampledPoints.length - 2);
+      
+      // Taper thickness toward the end of the limb
+      const thickness = baseThickness * (1 - t * 0.4);
+      
+      // Create a cylinder for this segment
+      this.createSimpleSegment(limbGroup, start, end, color, thickness);
+    }
+    
+    // Add a spherical cap at the end
+    const lastPoint = resampledPoints[resampledPoints.length - 1];
+    
+    // Create a small sphere for hand/foot
+    const capGeometry = new THREE.SphereGeometry(
+      isArm ? 0.08 : 0.13, 
+      10, 10
+    );
+    
+    const capMaterial = new THREE.MeshStandardMaterial({
+      color: isArm ? 0xffcc99 : 0x222222, // Skin tone for hands, dark for feet
+      roughness: 0.6,
+      metalness: 0.1
+    });
+    
+    const cap = new THREE.Mesh(capGeometry, capMaterial);
+    cap.position.set(lastPoint.x, lastPoint.y, 0);
+    limbGroup.add(cap);
+  }
+  
+  /**
+   * Create a default noodle limb with a nice curve
+   */
+  private createDefaultNoodleLimb(
+    limbGroup: THREE.Group, 
+    color: number, 
+    isArm: boolean
+  ): void {
+    // Create a path for the default limb
+    const numSegments = 10;
+    const points: Point[] = [];
+    
+    // Get the correct start point
+    const startPoint = isArm ? this.shoulderPosition : this.hipPosition;
+    
+    if (isArm) {
+      // For arms: curve going up and out, then down for hand
+      for (let i = 0; i <= numSegments; i++) {
+        const t = i / numSegments;
+        
+        // Create a nice arc for the arm
+        const angle = -Math.PI/4 + t * Math.PI/2; // -45° to 45°
+        const length = 0.8; // Length of arm
+        
+        // Add some random wiggles for a natural look
+        const wiggle = Math.sin(t * Math.PI * 4) * 0.05;
+        
+        points.push({
+          x: startPoint.x + Math.cos(angle) * length * t + wiggle,
+          y: startPoint.y + Math.sin(angle) * length * t
+        });
+      }
+    } else {
+      // For legs: curve going down and slightly out
+      for (let i = 0; i <= numSegments; i++) {
+        const t = i / numSegments;
+        
+        // Create a slight curve for the leg
+        const angle = Math.PI/2 + (t * Math.PI/8); // 90° to 112.5°
+        const length = 1.2; // Length of leg
+        
+        // Add some random wiggles for a natural look
+        const wiggle = Math.sin(t * Math.PI * 3) * 0.05;
+        
+        points.push({
+          x: startPoint.x + Math.cos(angle) * length * t + wiggle,
+          y: startPoint.y + Math.sin(angle) * length * t
+        });
+      }
+    }
+    
+    // Create segments for the default limb
+    const baseThickness = isArm ? 0.13 : 0.18;
+    
+    for (let i = 0; i < points.length - 1; i++) {
+      const t = i / (points.length - 2);
+      const thickness = baseThickness * (1 - t * 0.4);
+      
+      this.createSimpleSegment(limbGroup, points[i], points[i+1], color, thickness);
+    }
+    
+    // Add cap at the end
+    const lastPoint = points[points.length - 1];
+    
+    const capGeometry = new THREE.SphereGeometry(
+      isArm ? 0.08 : 0.13, 
+      10, 10
+    );
+    
+    const capMaterial = new THREE.MeshStandardMaterial({
+      color: isArm ? 0xffcc99 : 0x222222,
+      roughness: 0.6,
+      metalness: 0.1
+    });
+    
+    const cap = new THREE.Mesh(capGeometry, capMaterial);
+    cap.position.set(lastPoint.x, lastPoint.y, 0);
+    limbGroup.add(cap);
+  }
+  
+  /**
+   * Create a simple cylinder segment between two points
+   */
+  private createSimpleSegment(
+    limbGroup: THREE.Group,
+    start: Point,
+    end: Point,
+    color: number,
+    thickness: number
+  ): void {
+    // Calculate segment properties
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    const angle = Math.atan2(dy, dx);
+    
+    // Create the cylinder geometry
+    const geometry = new THREE.CylinderGeometry(
+      thickness, // Top radius
+      thickness, // Bottom radius 
+      length,    // Height
+      10         // RadialSegments - higher for smoother cylinders
+    );
+    
+    // Create material
+    const material = new THREE.MeshStandardMaterial({
+      color: color,
+      roughness: 0.7,
+      metalness: 0.1
+    });
+    
+    // Create the mesh
+    const segment = new THREE.Mesh(geometry, material);
+    segment.castShadow = true;
+    
+    // Rotate to align with the direction
+    segment.rotation.z = angle - Math.PI/2;
+    
+    // Position at the midpoint
+    const midX = (start.x + end.x) / 2;
+    const midY = (start.y + end.y) / 2;
+    segment.position.set(midX, midY, 0);
+    
+    // Add to the limb group
+    limbGroup.add(segment);
   }
 
   /**
@@ -589,13 +998,14 @@ export class ShapeSystem {
   }
 
   /**
-   * Create a single limb segment between two points
+   * Create a single limb segment between two points with custom thickness
    */
-  private createLimbSegment(
+  private createLimbSegmentWithThickness(
     limbGroup: THREE.Group,
     start: Point,
     end: Point,
-    color: number
+    color: number,
+    thickness: number
   ): void {
     // Calculate segment length and angle
     const dx = end.x - start.x;
@@ -603,15 +1013,15 @@ export class ShapeSystem {
     const length = Math.sqrt(dx * dx + dy * dy);
     const angle = Math.atan2(dy, dx);
     
-    // Create segment geometry - thinner at the extremities
-    const isExtremity = limbGroup.children.length > 5;
-    const radius = isExtremity ? 0.1 : 0.15; // Thinner for more flexibility
+    // Create segment geometry with specified thickness
+    // Use higher radial segments for smoother cylinders
+    const geometry = new THREE.CylinderGeometry(thickness, thickness, length, 12);
     
-    const geometry = new THREE.CylinderGeometry(radius, radius, length, 8);
+    // Use slightly shinier material for better look
     const material = new THREE.MeshStandardMaterial({
       color: color,
-      roughness: 0.7,
-      metalness: 0.1,
+      roughness: 0.6,
+      metalness: 0.15,
     });
     
     // Create segment mesh
@@ -629,21 +1039,36 @@ export class ShapeSystem {
     // Add to limb group
     limbGroup.add(segment);
   }
+  
+  /**
+   * Legacy method kept for compatibility
+   */
+  private createLimbSegment(
+    limbGroup: THREE.Group,
+    start: Point,
+    end: Point,
+    color: number
+  ): void {
+    // Default thickness for backward compatibility
+    const thickness = 0.15;
+    this.createLimbSegmentWithThickness(limbGroup, start, end, color, thickness);
+  }
 
   /**
-   * Generate a default straight pose
+   * Generate a default straight pose with arms above head
    */
   public generateDefaultShape(): LimbPositions {
-    // Create a more interesting default pose
+    // Create a straight pose with arms up
     const leftPath = [
-      this.shoulderPosition,
-      { x: 0.6, y: 1.2 }, // Arm slightly up
-      { x: 0.8, y: 0.9 },
-      this.hipPosition,
-      { x: 0.3, y: 0.0 }, // Leg slightly bent
-      { x: 0.4, y: -0.5 }
+      this.shoulderPosition, // Left shoulder
+      { x: 0.3, y: 1.6 },    // Arm midpoint
+      { x: 0.1, y: 2.0 },    // Hand above head
+      this.hipPosition,      // Left hip
+      { x: 0.2, y: 0.0 },    // Knee
+      { x: 0.2, y: -0.6 }    // Foot pointing straight down
     ];
 
+    // Mirror for right side
     const rightPath = leftPath.map((p) => ({ x: -p.x, y: p.y }));
 
     return {

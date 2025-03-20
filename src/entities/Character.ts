@@ -203,12 +203,17 @@ export class Character {
   /**
    * Apply a custom shape based on a drawn path
    * @param drawnPath Array of points from user drawing
+   * @returns boolean indicating if the shape was successfully applied
    */
-  public applyCustomShape(drawnPath: Point[]): void {
+  public applyCustomShape(drawnPath: Point[]): boolean {
+    console.log("Character received drawn path with length:", drawnPath.length);
+    
     // Process the drawn shape using ShapeSystem
     const limbPositions = this.shapeSystem.processDrawnShape(drawnPath);
 
     if (limbPositions) {
+      console.log("Processed limb positions - applying to character");
+      
       // Store the custom limb positions
       this.customLimbPositions = limbPositions;
       this.isUsingCustomShape = true;
@@ -224,7 +229,12 @@ export class Character {
 
       // Set current shape to "custom"
       this.currentShape = 'custom';
+      
+      return true; // Successfully applied
     }
+    
+    console.log("Failed to process drawn path to limb positions");
+    return false; // Failed to apply
   }
 
   /**
