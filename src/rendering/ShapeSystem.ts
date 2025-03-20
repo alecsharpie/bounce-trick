@@ -467,15 +467,49 @@ export class ShapeSystem {
       }
     });
     
-    // If no valid points, create a default straight limb
-    if (filteredPath.length < 2) {
-      const defaultEndPoint = isArm 
-        ? { x: startPoint.x * 1.5, y: startPoint.y - 1 }
-        : { x: startPoint.x * 1.5, y: startPoint.y - 1.5 };
+    // If no valid points or if the path is too simple (like a straight line),
+    // we need to add more points to make it work
+    if (filteredPath.length < 2 || this.isPathTooSimple(filteredPath)) {
+      // For simple paths, create a more interesting default shape
+      // based on the direction of the line
+      let defaultEndPoint: Point;
       
-      // Create a straight limb with multiple segments
-      const points = this.createEquallySpacedPoints(
+      if (filteredPath.length >= 2) {
+        // Use the direction of the simple line to determine the end point
+        const direction = {
+          x: filteredPath[filteredPath.length-1].x - filteredPath[0].x,
+          y: filteredPath[filteredPath.length-1].y - filteredPath[0].y
+        };
+        
+        // Normalize and scale
+        const length = Math.sqrt(direction.x * direction.x + direction.y * direction.y);
+        if (length > 0) {
+          direction.x /= length;
+          direction.y /= length;
+        }
+        
+        // Create end point based on direction
+        defaultEndPoint = {
+          x: startPoint.x + direction.x * (isArm ? 1.0 : 1.5),
+          y: startPoint.y + direction.y * (isArm ? 1.0 : 1.5)
+        };
+      } else {
+        // Default end point if we don't have enough points
+        defaultEndPoint = isArm 
+          ? { x: startPoint.x * 1.5, y: startPoint.y - 1 }
+          : { x: startPoint.x * 1.5, y: startPoint.y - 1.5 };
+      }
+      
+      // Create a path with a slight curve to make it more interesting
+      const midPoint = {
+        x: (startPoint.x + defaultEndPoint.x) / 2 + (isArm ? 0.2 : -0.2),
+        y: (startPoint.y + defaultEndPoint.y) / 2
+      };
+      
+      // Create a curved path with multiple segments
+      const points = this.createCurvedPath(
         startPoint, 
+        midPoint,
         defaultEndPoint, 
         NUM_SEGMENTS
       );
@@ -484,8 +518,10 @@ export class ShapeSystem {
       return;
     }
     
-    // Add the start point to the beginning
-    filteredPath = [startPoint, ...filteredPath];
+    // Add the start point to the beginning if it's not already there
+    if (filteredPath[0].x !== startPoint.x || filteredPath[0].y !== startPoint.y) {
+      filteredPath = [startPoint, ...filteredPath];
+    }
     
     // Resample the path to get equally spaced points
     const resampledPoints = this.resamplePathToEqualSegments(filteredPath, NUM_SEGMENTS);
@@ -495,80 +531,47 @@ export class ShapeSystem {
   }
 
   /**
-   * Create equally spaced points between two points
+   * Check if a path is too simple (like a straight line)
    */
-  private createEquallySpacedPoints(start: Point, end: Point, numPoints: number): Point[] {
+  private isPathTooSimple(path: Point[]): boolean {
+    if (path.length < 3) return true;
+    
+    // Check if all points are roughly in a straight line
+    if (path.length >= 3) {
+      const start = path[0];
+      const end = path[path.length - 1];
+      
+      // Calculate the maximum deviation from the straight line
+      let maxDeviation = 0;
+      for (let i = 1; i < path.length - 1; i++) {
+        const deviation = this.perpendicularDistance(path[i], start, end);
+        maxDeviation = Math.max(maxDeviation, deviation);
+      }
+      
+      // If the maximum deviation is small, the path is too simple
+      return maxDeviation < 0.1;
+    }
+    
+    return false;
+  }
+
+  /**
+   * Create a curved path between points
+   */
+  private createCurvedPath(start: Point, mid: Point, end: Point, numPoints: number): Point[] {
     const points: Point[] = [];
     
     for (let i = 0; i < numPoints; i++) {
       const t = i / (numPoints - 1);
-      points.push({
-        x: start.x + t * (end.x - start.x),
-        y: start.y + t * (end.y - start.y)
-      });
+      
+      // Quadratic Bezier curve
+      const x = (1-t)*(1-t)*start.x + 2*(1-t)*t*mid.x + t*t*end.x;
+      const y = (1-t)*(1-t)*start.y + 2*(1-t)*t*mid.y + t*t*end.y;
+      
+      points.push({ x, y });
     }
     
     return points;
-  }
-
-  /**
-   * Resample a path to have equally spaced segments
-   */
-  private resamplePathToEqualSegments(path: Point[], numSegments: number): Point[] {
-    if (path.length < 2) return path;
-    
-    // Calculate the total path length
-    let totalLength = 0;
-    for (let i = 0; i < path.length - 1; i++) {
-      const dx = path[i + 1].x - path[i].x;
-      const dy = path[i + 1].y - path[i].y;
-      totalLength += Math.sqrt(dx * dx + dy * dy);
-    }
-    
-    // Create equally spaced points
-    const segmentLength = totalLength / (numSegments - 1);
-    const result: Point[] = [path[0]]; // Start with the first point
-    
-    let currentSegmentStart = 0;
-    let accumulatedLength = 0;
-    
-    for (let i = 0; i < path.length - 1; i++) {
-      const start = path[i];
-      const end = path[i + 1];
-      const dx = end.x - start.x;
-      const dy = end.y - start.y;
-      const segmentDistance = Math.sqrt(dx * dx + dy * dy);
-      
-      // Check if we need to add points within this segment
-      while (accumulatedLength + segmentDistance >= (currentSegmentStart + 1) * segmentLength) {
-        // Calculate how far along this segment the point should be
-        const t = ((currentSegmentStart + 1) * segmentLength - accumulatedLength) / segmentDistance;
-        
-        // Interpolate to find the point
-        const newPoint = {
-          x: start.x + t * dx,
-          y: start.y + t * dy
-        };
-        
-        result.push(newPoint);
-        currentSegmentStart++;
-        
-        // If we've added all needed points, break
-        if (result.length >= numSegments) break;
-      }
-      
-      accumulatedLength += segmentDistance;
-      
-      // If we've added all needed points, break
-      if (result.length >= numSegments) break;
-    }
-    
-    // If we didn't get enough points (due to rounding), add the last point
-    while (result.length < numSegments) {
-      result.push(path[path.length - 1]);
-    }
-    
-    return result;
   }
 
   /**
@@ -647,5 +650,65 @@ export class ShapeSystem {
       leftArmLegPath: leftPath,
       rightArmLegPath: rightPath,
     };
+  }
+
+  /**
+   * Resample a path to have equally spaced segments
+   */
+  private resamplePathToEqualSegments(path: Point[], numSegments: number): Point[] {
+    if (path.length < 2) return path;
+    
+    // Calculate the total path length
+    let totalLength = 0;
+    for (let i = 0; i < path.length - 1; i++) {
+      const dx = path[i + 1].x - path[i].x;
+      const dy = path[i + 1].y - path[i].y;
+      totalLength += Math.sqrt(dx * dx + dy * dy);
+    }
+    
+    // Create equally spaced points
+    const segmentLength = totalLength / (numSegments - 1);
+    const result: Point[] = [path[0]]; // Start with the first point
+    
+    let currentSegmentStart = 0;
+    let accumulatedLength = 0;
+    
+    for (let i = 0; i < path.length - 1; i++) {
+      const start = path[i];
+      const end = path[i + 1];
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const segmentDistance = Math.sqrt(dx * dx + dy * dy);
+      
+      // Check if we need to add points within this segment
+      while (accumulatedLength + segmentDistance >= (currentSegmentStart + 1) * segmentLength) {
+        // Calculate how far along this segment the point should be
+        const t = ((currentSegmentStart + 1) * segmentLength - accumulatedLength) / segmentDistance;
+        
+        // Interpolate to find the point
+        const newPoint = {
+          x: start.x + t * dx,
+          y: start.y + t * dy
+        };
+        
+        result.push(newPoint);
+        currentSegmentStart++;
+        
+        // If we've added all needed points, break
+        if (result.length >= numSegments) break;
+      }
+      
+      accumulatedLength += segmentDistance;
+      
+      // If we've added all needed points, break
+      if (result.length >= numSegments) break;
+    }
+    
+    // If we didn't get enough points (due to rounding), add the last point
+    while (result.length < numSegments) {
+      result.push(path[path.length - 1]);
+    }
+    
+    return result;
   }
 }
