@@ -154,8 +154,7 @@ export class Character {
   public update(
     deltaTime: number,
     rotationInput: THREE.Vector2,
-    shapeInput: string,
-    drawnPath?: Point[] // Optional drawnPath for custom shapes
+    shapeInput: string
   ): void {
     // Apply gravity
     this.velocity.y -= 9.8 * deltaTime;
@@ -194,11 +193,6 @@ export class Character {
       // Reset rotation when on ground
       this.rotationSpeed = 0;
       this.rotationTotal = 0;
-    }
-
-    // Process custom shape if drawn path is provided
-    if (drawnPath && drawnPath.length > 3) {
-      this.applyCustomShape(drawnPath);
     }
 
     // Update group position and rotation

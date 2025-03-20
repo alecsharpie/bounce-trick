@@ -50,10 +50,10 @@ export class ShapeSystem {
       32
     );
     const material = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
+      color: 0x00ff00, // Change to green for better visibility
       side: THREE.DoubleSide,
       transparent: true,
-      opacity: 0.4,
+      opacity: 0.3, // More transparent
       depthTest: false,
     });
 
@@ -87,28 +87,13 @@ export class ShapeSystem {
    * @returns LimbPositions object or null if path is invalid
    */
   public processDrawnShape(drawnPath: Point[]): LimbPositions | null {
-    this.drawnPath = drawnPath;
-
     // Simplify the drawn path using Ramer-Douglas-Peucker algorithm
-    const simplifiedPath = this.simplifyPath(drawnPath, this.TOLERANCE);
+    // Use a smaller tolerance for more detail
+    const simplifiedPath = this.simplifyPath(drawnPath, 0.05);
 
-    // Validate the path passes through torso area
-    if (!this.isValidPath(simplifiedPath)) {
-      this.clearDrawnPath();
-      return null; // Invalid path
-    }
-
-    // Split the path at the torso intersection points
-    const { torsoEntryIndex, torsoExitIndex } =
-      this.findTorsoIntersectionPoints(simplifiedPath);
-
-    if (
-      torsoEntryIndex === -1 ||
-      torsoExitIndex === -1 ||
-      torsoEntryIndex === torsoExitIndex
-    ) {
-      this.clearDrawnPath();
-      return null; // Invalid path or couldn't find distinct entry/exit points
+    // Make sure we have enough points
+    if (simplifiedPath.length < 3) {
+      return null; // Path too short
     }
 
     // Create path for left side (original drawn path)
@@ -304,12 +289,12 @@ export class ShapeSystem {
   }
 
   /**
-   * Check if path passes through torso
+   * Check if path is valid (now just checks if it has enough points)
    * @param path Array of points
-   * @returns true if path passes through torso
+   * @returns true if path is valid
    */
   public isValidPath(path: Point[]): boolean {
-    return path.some((point) => this.isPointInTorso(point));
+    return path.length >= 3; // Just need at least 3 points for a meaningful shape
   }
 
   /**
@@ -426,120 +411,234 @@ export class ShapeSystem {
     const leftPath = limbPositions.leftArmLegPath;
     const rightPath = limbPositions.rightArmLegPath;
 
-    // Find the shoulder point (highest point with x > 0.2)
-    let shoulderPoint = this.shoulderPosition;
-    let hipPoint = this.hipPosition;
+    // Clear existing limbs
+    this.clearLimbs(leftArm);
+    this.clearLimbs(rightArm);
+    this.clearLimbs(leftLeg);
+    this.clearLimbs(rightLeg);
 
-    // Look for potential shoulder point in the left path
-    for (const point of leftPath) {
-      if (point.x > 0.2 && point.y > shoulderPoint.y) {
-        shoulderPoint = point;
-      } else if (point.x > 0.1 && point.y < this.torsoCenter.y && point.y > 0) {
-        hipPoint = point;
+    // Create new segmented limbs based on the paths
+    this.createSegmentedLimb(leftArm, leftPath, this.shoulderPosition, true);
+    this.createSegmentedLimb(rightArm, rightPath, { x: -this.shoulderPosition.x, y: this.shoulderPosition.y }, true);
+    this.createSegmentedLimb(leftLeg, leftPath, this.hipPosition, false);
+    this.createSegmentedLimb(rightLeg, rightPath, { x: -this.hipPosition.x, y: this.hipPosition.y }, false);
+  }
+
+  /**
+   * Clear existing limb segments
+   */
+  private clearLimbs(limb: THREE.Group): void {
+    while (limb.children.length > 0) {
+      const child = limb.children[0];
+      limb.remove(child);
+      if (child instanceof THREE.Mesh) {
+        child.geometry.dispose();
+        if (child.material instanceof THREE.Material) {
+          child.material.dispose();
+        }
       }
-    }
-
-    // Calculate angles for the left arm
-    const leftArmVector = this.findFarthestExtremity(
-      leftPath,
-      shoulderPoint,
-      'upper'
-    );
-    if (leftArmVector) {
-      const angleLeftArm = Math.atan2(
-        leftArmVector.y - shoulderPoint.y,
-        leftArmVector.x - shoulderPoint.x
-      );
-      leftArm.rotation.set(0, 0, angleLeftArm - Math.PI / 2);
-    }
-
-    // Calculate angles for left leg
-    const leftLegVector = this.findFarthestExtremity(
-      leftPath,
-      hipPoint,
-      'lower'
-    );
-    if (leftLegVector) {
-      const angleLeftLeg = Math.atan2(
-        leftLegVector.y - hipPoint.y,
-        leftLegVector.x - hipPoint.x
-      );
-      leftLeg.rotation.set(0, 0, angleLeftLeg - Math.PI / 2);
-    }
-
-    // Mirror for right side
-    const rightShoulderPoint = { x: -shoulderPoint.x, y: shoulderPoint.y };
-    const rightHipPoint = { x: -hipPoint.x, y: hipPoint.y };
-
-    // Calculate angles for the right arm
-    const rightArmVector = this.findFarthestExtremity(
-      rightPath,
-      rightShoulderPoint,
-      'upper'
-    );
-    if (rightArmVector) {
-      const angleRightArm = Math.atan2(
-        rightArmVector.y - rightShoulderPoint.y,
-        rightArmVector.x - rightShoulderPoint.x
-      );
-      rightArm.rotation.set(0, 0, angleRightArm - Math.PI / 2);
-    }
-
-    // Calculate angles for right leg
-    const rightLegVector = this.findFarthestExtremity(
-      rightPath,
-      rightHipPoint,
-      'lower'
-    );
-    if (rightLegVector) {
-      const angleRightLeg = Math.atan2(
-        rightLegVector.y - rightHipPoint.y,
-        rightLegVector.x - rightHipPoint.x
-      );
-      rightLeg.rotation.set(0, 0, angleRightLeg - Math.PI / 2);
     }
   }
 
   /**
-   * Find the farthest point in a given direction (upper or lower body)
+   * Create a segmented limb that follows the path
+   * @param limbGroup The group to add segments to
+   * @param path The path to follow
+   * @param startPoint The starting point (shoulder or hip)
+   * @param isArm Whether this is an arm (true) or leg (false)
    */
-  private findFarthestExtremity(
+  private createSegmentedLimb(
+    limbGroup: THREE.Group,
     path: Point[],
-    referencePoint: Point,
-    direction: 'upper' | 'lower'
-  ): Point | null {
-    let farthestPoint: Point | null = null;
-    let maxDistance = 0;
-
-    for (const point of path) {
-      // Only consider points in the upper or lower part of the body
-      if (
-        (direction === 'upper' && point.y < referencePoint.y) ||
-        (direction === 'lower' && point.y < referencePoint.y)
-      ) {
-        const dx = point.x - referencePoint.x;
-        const dy = point.y - referencePoint.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-
-        if (distance > maxDistance) {
-          maxDistance = distance;
-          farthestPoint = point;
-        }
+    startPoint: Point,
+    isArm: boolean
+  ): void {
+    // Number of segments for each limb
+    const NUM_SEGMENTS = 10;
+    
+    // Filter points based on whether it's an arm or leg
+    let filteredPath = path.filter(point => {
+      if (isArm) {
+        // For arms, use points in the upper half of the body
+        return point.y >= this.torsoCenter.y - 0.2;
+      } else {
+        // For legs, use points in the lower half of the body
+        return point.y <= this.torsoCenter.y + 0.2;
       }
+    });
+    
+    // If no valid points, create a default straight limb
+    if (filteredPath.length < 2) {
+      const defaultEndPoint = isArm 
+        ? { x: startPoint.x * 1.5, y: startPoint.y - 1 }
+        : { x: startPoint.x * 1.5, y: startPoint.y - 1.5 };
+      
+      // Create a straight limb with multiple segments
+      const points = this.createEquallySpacedPoints(
+        startPoint, 
+        defaultEndPoint, 
+        NUM_SEGMENTS
+      );
+      
+      this.createLimbFromPoints(limbGroup, points, isArm ? 0x3f51b5 : 0x4caf50);
+      return;
     }
+    
+    // Add the start point to the beginning
+    filteredPath = [startPoint, ...filteredPath];
+    
+    // Resample the path to get equally spaced points
+    const resampledPoints = this.resamplePathToEqualSegments(filteredPath, NUM_SEGMENTS);
+    
+    // Create the limb from these points
+    this.createLimbFromPoints(limbGroup, resampledPoints, isArm ? 0x3f51b5 : 0x4caf50);
+  }
 
-    return farthestPoint;
+  /**
+   * Create equally spaced points between two points
+   */
+  private createEquallySpacedPoints(start: Point, end: Point, numPoints: number): Point[] {
+    const points: Point[] = [];
+    
+    for (let i = 0; i < numPoints; i++) {
+      const t = i / (numPoints - 1);
+      points.push({
+        x: start.x + t * (end.x - start.x),
+        y: start.y + t * (end.y - start.y)
+      });
+    }
+    
+    return points;
+  }
+
+  /**
+   * Resample a path to have equally spaced segments
+   */
+  private resamplePathToEqualSegments(path: Point[], numSegments: number): Point[] {
+    if (path.length < 2) return path;
+    
+    // Calculate the total path length
+    let totalLength = 0;
+    for (let i = 0; i < path.length - 1; i++) {
+      const dx = path[i + 1].x - path[i].x;
+      const dy = path[i + 1].y - path[i].y;
+      totalLength += Math.sqrt(dx * dx + dy * dy);
+    }
+    
+    // Create equally spaced points
+    const segmentLength = totalLength / (numSegments - 1);
+    const result: Point[] = [path[0]]; // Start with the first point
+    
+    let currentSegmentStart = 0;
+    let accumulatedLength = 0;
+    
+    for (let i = 0; i < path.length - 1; i++) {
+      const start = path[i];
+      const end = path[i + 1];
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const segmentDistance = Math.sqrt(dx * dx + dy * dy);
+      
+      // Check if we need to add points within this segment
+      while (accumulatedLength + segmentDistance >= (currentSegmentStart + 1) * segmentLength) {
+        // Calculate how far along this segment the point should be
+        const t = ((currentSegmentStart + 1) * segmentLength - accumulatedLength) / segmentDistance;
+        
+        // Interpolate to find the point
+        const newPoint = {
+          x: start.x + t * dx,
+          y: start.y + t * dy
+        };
+        
+        result.push(newPoint);
+        currentSegmentStart++;
+        
+        // If we've added all needed points, break
+        if (result.length >= numSegments) break;
+      }
+      
+      accumulatedLength += segmentDistance;
+      
+      // If we've added all needed points, break
+      if (result.length >= numSegments) break;
+    }
+    
+    // If we didn't get enough points (due to rounding), add the last point
+    while (result.length < numSegments) {
+      result.push(path[path.length - 1]);
+    }
+    
+    return result;
+  }
+
+  /**
+   * Create a limb from an array of points
+   */
+  private createLimbFromPoints(limbGroup: THREE.Group, points: Point[], color: number): void {
+    // Create segments between consecutive points
+    for (let i = 0; i < points.length - 1; i++) {
+      const start = points[i];
+      const end = points[i + 1];
+      
+      // Create a segment between these points
+      this.createLimbSegment(limbGroup, start, end, color);
+    }
+  }
+
+  /**
+   * Create a single limb segment between two points
+   */
+  private createLimbSegment(
+    limbGroup: THREE.Group,
+    start: Point,
+    end: Point,
+    color: number
+  ): void {
+    // Calculate segment length and angle
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    const angle = Math.atan2(dy, dx);
+    
+    // Create segment geometry - thinner at the extremities
+    const isExtremity = limbGroup.children.length > 5;
+    const radius = isExtremity ? 0.1 : 0.15; // Thinner for more flexibility
+    
+    const geometry = new THREE.CylinderGeometry(radius, radius, length, 8);
+    const material = new THREE.MeshStandardMaterial({
+      color: color,
+      roughness: 0.7,
+      metalness: 0.1,
+    });
+    
+    // Create segment mesh
+    const segment = new THREE.Mesh(geometry, material);
+    segment.castShadow = true;
+    
+    // Rotate to point from start to end
+    segment.rotation.z = angle - Math.PI/2;
+    
+    // Position at midpoint between start and end
+    const midX = (start.x + end.x) / 2;
+    const midY = (start.y + end.y) / 2;
+    segment.position.set(midX, midY, 0);
+    
+    // Add to limb group
+    limbGroup.add(segment);
   }
 
   /**
    * Generate a default straight pose
    */
   public generateDefaultShape(): LimbPositions {
+    // Create a more interesting default pose
     const leftPath = [
       this.shoulderPosition,
-      { x: 0.6, y: 0.8 },
+      { x: 0.6, y: 1.2 }, // Arm slightly up
+      { x: 0.8, y: 0.9 },
       this.hipPosition,
-      { x: 0.3, y: -0.3 },
+      { x: 0.3, y: 0.0 }, // Leg slightly bent
+      { x: 0.4, y: -0.5 }
     ];
 
     const rightPath = leftPath.map((p) => ({ x: -p.x, y: p.y }));

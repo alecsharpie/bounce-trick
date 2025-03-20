@@ -34,9 +34,6 @@ export class InputManager {
 
     // Create drawing canvas
     this.createDrawingCanvas();
-
-    // Create drawing mode toggle button
-    this.createDrawingModeButton();
   }
 
   private setupKeyboardControls(): void {
@@ -183,7 +180,7 @@ export class InputManager {
     this.drawingCanvas.style.position = 'absolute';
     this.drawingCanvas.style.top = '0';
     this.drawingCanvas.style.left = '0';
-    this.drawingCanvas.style.pointerEvents = 'none'; // Initially disabled
+    this.drawingCanvas.style.pointerEvents = 'auto'; // Always enabled
     this.drawingCanvas.style.zIndex = '10';
     document.body.appendChild(this.drawingCanvas);
 
@@ -218,115 +215,9 @@ export class InputManager {
   }
 
   /**
-   * Create a button to toggle drawing mode
-   */
-  private createDrawingModeButton(): void {
-    const drawingModeBtn = document.createElement('button');
-    drawingModeBtn.id = 'drawing-mode-btn';
-    drawingModeBtn.textContent = 'Draw Body Shape';
-    drawingModeBtn.style.position = 'absolute';
-    drawingModeBtn.style.top = '20px';
-    drawingModeBtn.style.left = '20px';
-    drawingModeBtn.style.padding = '10px';
-    drawingModeBtn.style.borderRadius = '8px';
-    drawingModeBtn.style.background = '#f0f0f0';
-    drawingModeBtn.style.border = 'none';
-    drawingModeBtn.style.cursor = 'pointer';
-    drawingModeBtn.style.zIndex = '20';
-    drawingModeBtn.style.fontWeight = 'bold';
-    drawingModeBtn.style.color = '#333';
-
-    drawingModeBtn.addEventListener('click', () => {
-      this.toggleDrawingMode();
-    });
-
-    document.body.appendChild(drawingModeBtn);
-  }
-
-  /**
-   * Toggle drawing mode on/off
-   */
-  private toggleDrawingMode(): void {
-    this.isDrawingMode = !this.isDrawingMode;
-
-    // Update button appearance
-    const drawingModeBtn = document.getElementById('drawing-mode-btn');
-    if (drawingModeBtn) {
-      drawingModeBtn.style.background = this.isDrawingMode
-        ? '#4CAF50'
-        : '#f0f0f0';
-      drawingModeBtn.textContent = this.isDrawingMode
-        ? 'Cancel Drawing'
-        : 'Draw Body Shape';
-    }
-
-    // Enable/disable the canvas pointer events
-    if (this.drawingCanvas) {
-      this.drawingCanvas.style.pointerEvents = this.isDrawingMode
-        ? 'auto'
-        : 'none';
-    }
-
-    // Clear any existing path
-    this.clearDrawnPath();
-
-    // Disable joystick when in drawing mode
-    const joystickContainer = document.getElementById('joystick-container');
-
-    if (joystickContainer) {
-      joystickContainer.style.pointerEvents = this.isDrawingMode
-        ? 'none'
-        : 'auto';
-      joystickContainer.style.opacity = this.isDrawingMode ? '0.5' : '1';
-    }
-
-    // Show instructions when in drawing mode
-    this.showDrawingInstructions(this.isDrawingMode);
-  }
-
-  /**
-   * Show drawing instructions
-   */
-  private showDrawingInstructions(show: boolean): void {
-    let instructionsEl = document.getElementById('drawing-instructions');
-
-    if (show) {
-      if (!instructionsEl) {
-        instructionsEl = document.createElement('div');
-        instructionsEl.id = 'drawing-instructions';
-        instructionsEl.style.position = 'absolute';
-        instructionsEl.style.top = '70px';
-        instructionsEl.style.left = '20px';
-        instructionsEl.style.padding = '10px';
-        instructionsEl.style.backgroundColor = 'rgba(0,0,0,0.7)';
-        instructionsEl.style.color = 'white';
-        instructionsEl.style.borderRadius = '8px';
-        instructionsEl.style.maxWidth = '350px';
-        instructionsEl.style.zIndex = '25';
-        instructionsEl.innerHTML = `
-          <strong>Drawing Instructions:</strong>
-          <ul style="padding-left: 20px; margin: 5px 0;">
-            <li>Draw a line that passes through the torso</li>
-            <li>The line will be mirrored for the right side</li>
-            <li>The line defines arms and legs position</li>
-            <li>Spin using the joystick for tricks</li>
-          </ul>
-        `;
-        document.body.appendChild(instructionsEl);
-      } else {
-        instructionsEl.style.display = 'block';
-      }
-    } else if (instructionsEl) {
-      instructionsEl.style.display = 'none';
-    }
-  }
-
-  /**
    * Handle start of drawing (mouse down or touch start)
    */
   private handleDrawStart(event: MouseEvent | TouchEvent): void {
-    if (!this.isDrawingMode) return;
-
     event.preventDefault();
 
     this.isDrawing = true;
@@ -349,7 +240,7 @@ export class InputManager {
    * Handle drawing motion (mouse move or touch move)
    */
   private handleDrawMove(event: MouseEvent | TouchEvent): void {
-    if (!this.isDrawingMode || !this.isDrawing) return;
+    if (!this.isDrawing) return;
 
     event.preventDefault();
 
@@ -367,7 +258,7 @@ export class InputManager {
    * Handle end of drawing (mouse up or touch end)
    */
   private handleDrawEnd(event: MouseEvent | TouchEvent): void {
-    if (!this.isDrawingMode || !this.isDrawing) return;
+    if (!this.isDrawing) return;
 
     event.preventDefault();
 
@@ -381,10 +272,14 @@ export class InputManager {
     // If path is too short, clear it
     if (this.drawnPath.length < 3) {
       this.clearDrawnPath();
+      return;
     }
 
-    // Exit drawing mode
-    this.toggleDrawingMode();
+    // We don't exit drawing mode anymore, just process the path
+    // and clear for the next drawing after a short delay to let the user see their drawing
+    setTimeout(() => {
+      this.clearDrawnPath();
+    }, 500); // Clear after 500ms
   }
 
   /**
@@ -475,5 +370,21 @@ export class InputManager {
       void trickDisplay.offsetWidth;
       trickDisplay.style.animation = 'trickPopup 1s ease-out';
     }
+  }
+
+  /**
+   * Toggle drawing mode on/off
+   */
+  private toggleDrawingMode(): void {
+    this.isDrawingMode = !this.isDrawingMode;
+    
+    if (this.drawingCanvas) {
+      // Update canvas visibility based on drawing mode
+      this.drawingCanvas.style.pointerEvents = this.isDrawingMode ? 'auto' : 'none';
+      this.drawingCanvas.style.opacity = this.isDrawingMode ? '1' : '0';
+    }
+    
+    // Clear any existing path when toggling
+    this.clearDrawnPath();
   }
 }
